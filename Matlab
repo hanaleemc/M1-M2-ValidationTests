@@ -1,0 +1,698 @@
+                                                %% Section 0: Setting up the model 
+
+%Setting solvers
+initCobraToolbox(false) 
+changeCobraSolver ('gurobi', 'all'); 
+
+%specifying models 
+model1 = M1_m1_modelDER
+model2 = M2_m1_model_ldlONDER
+                                                %% Section 1: Optimizing for growth 
+
+%model default is biomass so no need to set
+
+%check initial biomass predictions 
+bm1_pred = optimizeCbModel(model1);
+bm1_pred.f
+bm2_pred = optimizeCbModel(model2);
+bm2_pred.f
+
+    %% 1.1 Lactate production 
+
+%% 1.1.1 Lactate production 
+
+%New model with lactate sink reaction
+lac_model1 = addSinkReactions(model1, {'lac_L[c]'})
+lac_model1_sol = optimizeCbModel(lac_model1)
+lac_model2 = addSinkReactions(model2, {'lac_L[c]'})
+lac_model2_sol = optimizeCbModel(lac_model2)
+
+%m1 
+%Generate initial flux values - We expect lactate flux to occur
+lac_flux1 = lac_model1_sol.x(findRxnIDs(lac_model1,'sink_lac_L[c]'));
+lac_flux1
+
+%m2
+%Generate initial flux values - We do not expect (much) lactate flux to occur
+lac_flux2 = lac_model2_sol.x(findRxnIDs(lac_model2,'sink_lac_L[c]'));
+lac_flux2
+
+
+%% 1.1.2 Lactate & Glucose
+
+%m1
+%We expect lactate production to occur AND to be dependent on glucose 
+
+lac_glc_out1=[];
+glc_flux = [-10.5 -2.5 0]
+for i = 1:length(glc_flux)
+glc_lac_model1 = changeRxnBounds(lac_model1, 'EX_glc_D[e]', glc_flux(i), 'l');
+glc_lac_model1_sol = optimizeCbModel(glc_lac_model1);
+glc_lac_flux1 = glc_lac_model1_sol.x(findRxnIDs(glc_lac_model1,'sink_lac_L[c]'));
+res_out1=[glc_flux(i), glc_lac_model1_sol.f]
+lac_glc_out1=[lac_glc_out1; res_out1]
+end
+
+%m2 
+%We do not expect (much) lactate production to occur but if it is it will be dependent on glucose 
+
+lac_glc_out2=[];
+glc_flux = [-10.5 -2.5 0]
+for i = 1:length(glc_flux)
+glc_lac_model2 = changeRxnBounds(lac_model2, 'EX_glc_D[e]', glc_flux(i), 'l');
+glc_lac_model2_sol = optimizeCbModel(glc_lac_model2);
+glc_lac_flux2 = glc_lac_model2_sol.x(findRxnIDs(glc_lac_model2,'sink_lac_L[c]'));
+res_out2=[glc_flux(i), glc_lac_model2_sol.f]
+lac_glc_out2=[lac_glc_out1; res_out2]
+end
+
+%% 1.1.3 Lactate & Glutamine
+
+%m1
+%We expect lactate production to occur AND to be dependent on glutamine
+
+lac_gln_out1=[];
+gln_flux = [-10.5 -2.5 0]
+for i = 1:length(gln_flux)
+gln_lac_model1 = changeRxnBounds(lac_model1, 'EX_gln_L[e]', gln_flux(i), 'l');
+gln_lac_model1_sol = optimizeCbModel(gln_lac_model1);
+gln_lac_flux1 = gln_lac_model1_sol.x(findRxnIDs(gln_lac_model1,'sink_lac_L[c]'));
+res_out1=[gln_flux(i), gln_lac_model1_sol.f]
+lac_gln_out1=[lac_gln_out1; res_out1]
+end
+
+%m2
+%We do not expect (much) lactate production to occur but if it is it will be dependent on glutamine 
+
+lac_gln_out2=[];
+gln_flux = [-10.5 -2.5 0]
+for i = 1:length(gln_flux)
+gln_lac_model2 = changeRxnBounds(lac_model2, 'EX_gln_L[e]', gln_flux(i), 'l');
+gln_lac_model2_sol = optimizeCbModel(gln_lac_model2);
+gln_lac_flux2 = gln_lac_model2_sol.x(findRxnIDs(gln_lac_model2,'sink_lac_L[c]'));
+res_out2=[gln_flux(i), gln_lac_model2_sol.f]
+lac_gln_out2=[lac_gln_out2; res_out2]
+end
+
+    %% 1.2 Key Metabolite Markers  
+
+%% 1.2.1 Citrulline production 
+%sink_citr[c] and EX_citr_L[e] are present in the model - currently testing
+
+model1 = M1_m1_modelDER
+model2 = M2_m1_model_ldlONDER
+
+%opt for biomass, look at citr flux - try optimizing for sink citr
+opt_model1 = optimizeCbModel(model1);
+citr_flux1 = opt_model1.x(findRxnIDs(model1,'sink_citr[c]')) %sink is better here 
+citr_flux1
+
+%m2 - should not generate citr 
+
+%opt for biomass, look at citr flux 
+opt_model2 = optimizeCbModel(model2);
+citr_flux2 = opt_model2.x(findRxnIDs(model2,'sink_citr[c]'))
+citr_flux2
+
+%% 1.2.2 Nitric Oxide Production/Flux 
+
+NO_model1 = addSinkReactions(model1, {'EX_no[e]'}) %no NO in model so add as sink
+bm_NO1 = optimizeCbModel(NO_model1);
+NO_flux1 = bm_NO1.x(findRxnIDs(NO_model1,'sink_EX_no[e]'))
+
+%m2 - does not generate NO
+NO_model2 = addSinkReactions(model2, {'EX_no[e]'}) %no NO in model so add as sink
+bm_NO2 = optimizeCbModel(NO_model2);
+NO_flux2 = bm_NO2.x(findRxnIDs(NO_model2,'sink_EX_no[e]'))
+
+%% 1.2.3 Citrate production/flux
+
+%m1 - should generate citr
+opt_model1 = optimizeCbModel(model1);
+cit_flux1 = opt_model1.x(findRxnIDs(model1,'EX_cit[e]')) %sink is better here 
+cit_flux1
+
+%m2 - should not generate citr 
+
+opt_model2 = optimizeCbModel(model2);
+cit_flux2 = opt_model2.x(findRxnIDs(model2,'EX_cit[e]'))
+cit_flux2
+
+%% 1.2.4 Succinate production/flux
+
+%m1 - should generate succinate
+opt_model1 = optimizeCbModel(model1);
+succ_flux1 = opt_model1.x(findRxnIDs(model1,'EX_succ[e]'))
+succ_flux1
+
+%m2 - should not generate succ 
+
+opt_model2 = optimizeCbModel(model2);
+succ_flux2 = opt_model2.x(findRxnIDs(model2,'EX_succ[e]'))
+succ_flux2
+
+
+%% 1.2.5 Urea production 
+
+%m1 - should NOT generate urea 
+
+%opt for biomass, look at urea flux 
+opt_model1 = optimizeCbModel(model1);
+urea_flux1 = opt_model1.x(findRxnIDs(model1,'EX_urea[e]'))
+urea_flux1
+
+%m2 - should generate urea 
+
+%opt for biomass, look at urea flux 
+opt_model2 = optimizeCbModel(model2);
+urea_flux2 = opt_model2.x(findRxnIDs(model2,'EX_urea[e]'))
+urea_flux2
+
+%% 1.2.6 Ornithine production
+
+%m1 - should NOT generate orn
+
+%opt for biomass, look at orn flux 
+opt_model1 = optimizeCbModel(model1);
+orn_flux1 = opt_model1.x(findRxnIDs(model1,'EX_orn[e]'))
+orn_flux1
+
+%m2 - should generate orn - same at the moment (uptake)
+
+%opt for biomass, look at orn flux 
+opt_model2 = optimizeCbModel(model2);
+orn_flux2 = opt_model2.x(findRxnIDs(model2,'EX_orn[e]'))
+orn_flux2
+
+%% 1.2.7 L-proline production 
+
+%m1 - should NOT generate proline
+
+%opt for biomass, look at proline flux 
+opt_model1 = optimizeCbModel(model1);
+pro_flux1 = opt_model1.x(findRxnIDs(model1,'EX_pro_L[e]'))
+pro_flux1
+
+%m2 - should generate proline - same at the moment (uptake)
+
+%opt for biomass, look at proline flux 
+opt_model2 = optimizeCbModel(model2);
+pro_flux2 = opt_model2.x(findRxnIDs(model2,'EX_pro_L[e]'))
+pro_flux2
+
+    %% 1.3 SubSystem Flux Tests
+    
+%% 1.3.1 TCA CYCLE FLUX
+%M1 - Broken TCA, break at isocitrate dehydrogenase and succinate
+%dehydrogenase
+
+[TCA_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Citric acid cycle')
+TCA_flux1 = []
+for i = 1:length(TCA_rxns1)
+opt_model1_sol = optimizeCbModel(model1);
+flux1 = opt_model1_sol.x(findRxnIDs(model1,TCA_rxns1(i)))
+res_out1=[TCA_rxns1(i), flux1]
+TCA_flux1=[TCA_flux1; res_out1]
+end
+
+%M2 - intact TCA 
+[TCA_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Citric acid cycle')
+TCA_flux2 = []
+for i = 1:length(TCA_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,TCA_rxns2(i)))
+res_out2=[TCA_rxns2(i), flux2]
+TCA_flux2=[TCA_flux2; res_out2]
+end
+%% 1.3.2 PPP FLUX 
+
+%m1 - increased PPP flux 
+[PPP_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Pentose phosphate pathway')
+PPP_flux1 = []
+for i = 1:length(PPP_rxns1)
+opt_model1 = optimizeCbModel(model1);
+flux1 = opt_model1.x(findRxnIDs(model1,PPP_rxns1(i)))
+res_out1=[PPP_rxns1(i), flux1]
+PPP_flux1=[PPP_flux1; res_out1]
+end
+
+%m2 - reduced PPP flux 
+[PPP_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Pentose phosphate pathway')
+PPP_flux2 = []
+for i = 1:length(PPP_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,PPP_rxns2(i)))
+res_out2=[PPP_rxns2(i), flux2]
+PPP_flux2=[PPP_flux2; res_out2]
+end
+
+%% 1.3.3 OXPHOS FLUX
+
+%m1 - dysfunctional OXPHOS
+[OXPHOS_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Oxidative phosphorylation')
+
+OXPHOS_flux1 = []
+for i = 1:length(OXPHOS_rxns1)
+opt_model1 = optimizeCbModel(model1);
+flux1 = opt_model1.x(findRxnIDs(model1,OXPHOS_rxns1(i)))
+res_out1=[OXPHOS_rxns1(i), flux1]
+OXPHOS_flux1=[OXPHOS_flux1; res_out1]
+end
+
+%m2 - reliance on OXPHOS
+[OXPHOS_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Oxidative phosphorylation')
+
+OXPHOS_flux2 = []
+for i = 1:length(OXPHOS_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,OXPHOS_rxns2(i)))
+res_out2=[OXPHOS_rxns2(i), flux2]
+OXPHOS_flux2=[OXPHOS_flux2; res_out2]
+end
+%% 1.3.4 Fatty Acid Oxidation (warning: includes many reactions!)
+%m1 - reduced fatty acid oxidation
+[FAO_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Fatty acid oxidation')
+
+FAO_flux1 = []
+for i = 1:length(FAO_rxns1)
+opt_model1 = optimizeCbModel(model1);
+flux1 = opt_model1.x(findRxnIDs(model1,FAO_rxns1(i)))
+res_out1=[FAO_rxns1(i), flux1]
+FAO_flux1=[FAO_flux1; res_out1]
+end
+
+%m2 - Enhanced flux of Fatty Acid oxidation
+[FAO_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Fatty acid oxidation')
+FAO_flux2 = []
+for i = 1:length(FAO_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,FAO_rxns2(i)))
+res_out2=[FAO_rxns2(i), flux2]
+FAO_flux2=[FAO_flux2; res_out2]
+end
+
+%% 1.3.5 Fatty Acid Synthesis 
+
+%m1 - increased flux through FAS 
+[FAS_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Fatty acid synthesis')
+FAS_flux1 = []
+for i = 1:length(FAS_rxns1)
+opt_model1 = optimizeCbModel(model1);
+flux1 = opt_model1.x(findRxnIDs(model1,FAS_rxns1(i)))
+res_out1=[FAS_rxns1(i), flux1]
+FAS_flux1=[FAS_flux1; res_out1]
+end
+
+%m2 - minimal flux through FAS 
+[FAS_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Fatty acid synthesis')
+FAS_flux2 = []
+for i = 1:length(FAS_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,FAS_rxns2(i)))
+res_out2=[FAS_rxns2(i), flux2]
+FAS_flux2=[FAS_flux2; res_out2]
+end
+
+%% 1.3.6 Glycolysis Flux 
+
+%M1 - increased glycolytic flux
+[gly_rxns1, rxnPos] = findRxnsFromSubSystem(model1, 'Glycolysis/gluconeogenesis')
+gly_flux1 = []
+for i = 1:length(gly_rxns1)
+opt_model1_sol = optimizeCbModel(model1);
+flux1 = opt_model1_sol.x(findRxnIDs(model1,gly_rxns1(i)))
+res_out1=[gly_rxns1(i), flux1]
+gly_flux1=[gly_flux1; res_out1]
+end
+
+%M2 - reduced flux 
+[gly_rxns2, rxnPos] = findRxnsFromSubSystem(model2, 'Glycolysis/gluconeogenesis')
+gly_flux2 = []
+for i = 1:length(gly_rxns2)
+opt_model2 = optimizeCbModel(model2);
+flux2 = opt_model2.x(findRxnIDs(model2,gly_rxns2(i)))
+res_out2=[gly_rxns2(i), flux2]
+gly_flux2=[gly_rxns2; res_out2]
+end
+
+                                            %% Section 2: Optimizing for ATP production 
+
+
+    %% 2.0 ATP Model Set up  
+                                            %set models to optimize for ATP
+ATP_model1 = changeObjective(model1, 'ATPS4mi');
+ATP_model2 = changeObjective(model2, 'ATPS4mi');
+
+% 2.0.1 initial production of ATP 
+ATP1_pred = optimizeCbModel(ATP_model1);
+ATP1_pred.f
+ATP2_pred = optimizeCbModel(ATP_model2);
+ATP2_pred.f
+
+    %% 2.1 Lactate production/flux
+    
+%% 2.1.1 Initial Lactate Production/Flux 
+
+%M1 
+%We expect lactate production to occur 
+
+lac_model1 = addSinkReactions(ATP_model1, {'lac_L[c]'})
+lac_model1_sol = optimizeCbModel(lac_model1)
+lac_flux1 = lac_model1_sol.x(findRxnIDs(lac_model1,'sink_lac_L[c]'));
+lac_flux1
+
+%we do not expect lactate production to occur 
+lac_model2 = addSinkReactions(ATP_model2, {'lac_L[c]'})
+lac_model2_sol = optimizeCbModel(lac_model2)
+lac_flux2 = lac_model2_sol.x(findRxnIDs(lac_model2,'sink_lac_L[c]'));
+lac_flux2
+
+%% 2.1.2 Lactate & Glucose 
+
+%m1 - We expect lactate production to occur AND to be dependent on glucose 
+lac_glc_out1=[];
+glc_flux = [-10.5 -2.5 0]
+for i = 1:length(glc_flux)
+glc_lac_model1 = changeRxnBounds(lac_model1, 'EX_glc_D[e]', glc_flux(i), 'l');
+glc_lac_model1_sol = optimizeCbModel(glc_lac_model1);
+glc_lac_flux1 = glc_lac_model1_sol.x(findRxnIDs(glc_lac_model1,'sink_lac_L[c]'));
+res_out1=[glc_flux(i), glc_lac_model1_sol.f]
+lac_glc_out1=[lac_glc_out1; res_out1]
+end
+
+%m2 we do not expect lactate production to occur 
+lac_glc_out2=[];
+glc_flux = [-10.5 -2.5 0]
+for i = 1:length(glc_flux)
+glc_lac_model2 = changeRxnBounds(lac_model2, 'EX_glc_D[e]', glc_flux(i), 'l');
+glc_lac_model2_sol = optimizeCbModel(glc_lac_model2);
+glc_lac_flux12 = glc_lac_model2_sol.x(findRxnIDs(glc_lac_model2,'sink_lac_L[c]'));
+res_out2=[glc_flux(i), glc_lac_model2_sol.f]
+lac_glc_out2=[lac_glc_out2; res_out2]
+end
+
+%% 2.1.3 Lactate & Glutamine 
+%We expect lactate production to occur AND to be dependent on glutamine
+
+lac_gln_out1=[];
+gln_flux = [-10.5 -2.5 0]
+for i = 1:length(gln_flux)
+gln_lac_model1 = changeRxnBounds(lac_model1, 'EX_gln_L[e]', gln_flux(i), 'l');
+gln_lac_model1_sol = optimizeCbModel(gln_lac_model1);
+gln_lac_flux1 = gln_lac_model1_sol.x(findRxnIDs(gln_lac_model1,'sink_lac_L[c]'));
+res_out1=[gln_flux(i), gln_lac_model1_sol.f]
+lac_gln_out1=[lac_gln_out1; res_out1]
+end
+
+%m2 - we do not expect lactate production to occur 
+lac_gln_out2=[];
+gln_flux = [-10.5 -2.5 0]
+for i = 1:length(gln_flux)
+gln_lac_model2 = changeRxnBounds(lac_model2, 'EX_gln_L[e]', gln_flux(i), 'l');
+gln_lac_model2_sol = optimizeCbModel(gln_lac_model2);
+gln_lac_flux2 = gln_lac_model2_sol.x(findRxnIDs(gln_lac_model2,'sink_lac_L[c]'));
+res_out2=[gln_flux(i), gln_lac_model2_sol.f]
+lac_gln_out2=[lac_gln_out2; res_out2]
+end
+
+  %% 2.2 Key Metabolite Markers  
+
+%% 2.2.1 Citrulline production 
+
+%opt for biomass, look at citr flux - try optimizing for sink citr
+opt_model1 = optimizeCbModel(ATP_model1);
+citr_flux = opt_model1.x(findRxnIDs(ATP_model1,'sink_citr[c]')) %sink is better here 
+citr_flux1
+
+%m2 - should not generate citr 
+
+%opt for biomass, look at citr flux 
+opt_model2 = optimizeCbModel(ATP_model2);
+citr_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'sink_citr[c]'))
+citr_flux2
+
+%% 2.2.2 
+
+NO_model1 = addSinkReactions(ATP_model1, {'EX_no[e]'}) %no NO in model so add as sink
+bm_NO1 = optimizeCbModel(NO_model1);
+NO_flux1 = bm_NO1.x(findRxnIDs(NO_model1,'sink_EX_no[e]'))
+
+%m2 - does not generate NO
+NO_model2 = addSinkReactions(ATP_model2, {'EX_no[e]'}) %no NO in model so add as sink
+bm_NO2 = optimizeCbModel(NO_model2);
+NO_flux2 = bm_NO2.x(findRxnIDs(NO_model2,'sink_EX_no[e]'))
+
+
+%% 2.2.3 
+%m1 - should generate citr
+opt_model1 = optimizeCbModel(ATP_model1);
+cit_flux = opt_model1.x(findRxnIDs(ATP_model1,'EX_cit[e]')) %sink is better here 
+cit_flux1
+
+%m2 - should not generate citr 
+
+opt_model2 = optimizeCbModel(ATP_model2);
+cit_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'EX_cit[e]'))
+cit_flux2
+
+%% 2.2.4 
+
+%m1 - should generate succinate
+opt_model1 = optimizeCbModel(ATP_model1);
+succ_flux1 = opt_model1.x(findRxnIDs(ATP_model1,'EX_succ[e]'))
+succ_flux1
+
+%m2 - should not generate succ 
+
+opt_model2 = optimizeCbModel(ATP_model2);
+succ_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'EX_succ[e]'))
+succ_flux2
+
+%% 2.2.5 Urea production 
+
+%m1 - should NOT generate urea 
+
+%opt for biomass, look at urea flux 
+opt_model1 = optimizeCbModel(ATP_model1);
+urea_flux1 = opt_model1.x(findRxnIDs(ATP_model1,'EX_urea[e]'))
+urea_flux1
+
+%m2 - should generate urea 
+
+%opt for biomass, look at urea flux 
+opt_model2 = optimizeCbModel(ATP_model2);
+urea_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'EX_urea[e]'))
+urea_flux2
+
+%% 2.2.6 Ornithine production
+
+%m1 - should NOT generate orn
+
+%opt for biomass, look at orn flux 
+opt_model1 = optimizeCbModel(ATP_model1);
+orn_flux1 = opt_model1.x(findRxnIDs(ATP_model1,'EX_orn[e]'))
+orn_flux1
+
+%m2 - should generate orn - same at the moment (uptake)
+
+%opt for atp, look at orn flux 
+opt_model2 = optimizeCbModel(ATP_model2);
+orn_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'EX_orn[e]'))
+orn_flux2
+
+%% 2.2.7 L-proline production 
+
+%m1 - should NOT generate proline
+
+%opt for biomass, look at proline flux 
+opt_model1 = optimizeCbModel(ATP_model1);
+orn_flux1 = opt_model1.x(findRxnIDs(ATP_model1,'EX_pro_L[e]'))
+orn_flux1
+
+%m2 - should generate proline - same at the moment (uptake)
+
+%opt for biomass, look at proline flux 
+opt_model2 = optimizeCbModel(ATP_model2);
+pro_flux2 = opt_model2.x(findRxnIDs(ATP_model2,'EX_pro_L[e]'))
+pro_flux2
+
+%% 2.3 SubSystem Flux Tests
+    
+%% 2.3.1 TCA CYCLE FLUX
+%M1 - Broken TCA, break at isocitrate dehydrogenase and succinate
+%dehydrogenase
+
+[TCA_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Citric acid cycle')
+TCA_flux1 = []
+for i = 1:length(TCA_rxns1)
+opt_model1_sol = optimizeCbModel(ATP_model1);
+flux1 = opt_model1_sol.x(findRxnIDs(ATP_model1,TCA_rxns1(i)))
+res_out1=[TCA_rxns1(i), flux1]
+TCA_flux1=[TCA_flux1; res_out1]
+end
+
+%M2 - intact TCA 
+[TCA_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model2, 'Citric acid cycle')
+TCA_flux2 = []
+for i = 1:length(TCA_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,TCA_rxns2(i)))
+res_out2=[TCA_rxns2(i), flux2]
+TCA_flux2=[TCA_flux2; res_out2]
+end
+%% 2.3.2 PPP FLUX 
+
+%m1 - increased PPP flux 
+[PPP_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Pentose phosphate pathway')
+PPP_flux1 = []
+for i = 1:length(PPP_rxns1)
+opt_model1 = optimizeCbModel(ATP_model1);
+flux1 = opt_model1.x(findRxnIDs(ATP_model1,PPP_rxns1(i)))
+res_out1=[PPP_rxns1(i), flux1]
+PPP_flux1=[PPP_flux1; res_out1]
+end
+
+%m2 - reduced PPP flux 
+[PPP_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model2, 'Pentose phosphate pathway')
+PPP_flux2 = []
+for i = 1:length(PPP_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,PPP_rxns2(i)))
+res_out2=[PPP_rxns2(i), flux2]
+PPP_flux2=[PPP_flux2; res_out2]
+end
+
+%% 2.3.3 OXPHOS FLUX
+
+%m1 - dysfunctional OXPHOS
+[OXPHOS_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Oxidative phosphorylation')
+
+OXPHOS_flux1 = []
+for i = 1:length(OXPHOS_rxns1)
+opt_model1 = optimizeCbModel(ATP_model1);
+flux1 = opt_model1.x(findRxnIDs(ATP_model1,OXPHOS_rxns1(i)))
+res_out1=[OXPHOS_rxns1(i), flux1]
+OXPHOS_flux1=[OXPHOS_flux1; res_out1]
+end
+
+%m2 - reliance on OXPHOS
+[OXPHOS_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Oxidative phosphorylation')
+
+OXPHOS_flux2 = []
+for i = 1:length(OXPHOS_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,OXPHOS_rxns2(i)))
+res_out2=[OXPHOS_rxns2(i), flux2]
+OXPHOS_flux2=[OXPHOS_flux2; res_out2]
+end
+%% 2.3.4 Fatty Acid Oxidation (warning: includes many reactions!)
+%m1 - reduced fatty acid oxidation
+[FAO_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Fatty acid oxidation')
+
+FAO_flux1 = []
+for i = 1:length(FAO_rxns1)
+opt_model1 = optimizeCbModel(ATP_model1);
+flux1 = opt_model1.x(findRxnIDs(ATP_model1,FAO_rxns1(i)))
+res_out1=[FAO_rxns1(i), flux1]
+FAO_flux1=[FAO_flux1; res_out1]
+end
+
+%m2 - Enhanced flux of Fatty Acid oxidation
+[FAO_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model2, 'Fatty acid oxidation')
+FAO_flux2 = []
+for i = 1:length(FAO_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,FAO_rxns2(i)))
+res_out2=[FAO_rxns2(i), flux2]
+FAO_flux2=[FAO_flux2; res_out2]
+end
+
+%% 2.3.5 Fatty Acid Synthesis 
+
+%m1 - increased flux through FAS 
+[FAS_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Fatty acid synthesis')
+FAS_flux1 = []
+for i = 1:length(FAS_rxns1)
+opt_model1 = optimizeCbModel(ATP_model1);
+flux1 = opt_model1.x(findRxnIDs(ATP_model1,FAS_rxns1(i)))
+res_out1=[FAS_rxns1(i), flux1]
+FAS_flux1=[FAS_flux1; res_out1]
+end
+
+%m2 - minimal flux through FAS 
+[FAS_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model2, 'Fatty acid synthesis')
+FAS_flux2 = []
+for i = 1:length(FAS_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,FAS_rxns2(i)))
+res_out2=[FAS_rxns2(i), flux2]
+FAS_flux2=[FAS_flux2; res_out2]
+end
+
+%% 2.3.6 Glycolysis Flux 
+
+%M1 - increased glycolytic flux
+[gly_rxns1, rxnPos] = findRxnsFromSubSystem(ATP_model1, 'Glycolysis/gluconeogenesis')
+gly_flux1 = []
+for i = 1:length(gly_rxns1)
+opt_model1_sol = optimizeCbModel(ATP_model1);
+flux1 = opt_model1_sol.x(findRxnIDs(ATP_model1,gly_rxns1(i)))
+res_out1=[gly_rxns1(i), flux1]
+gly_flux1=[gly_flux1; res_out1]
+end
+
+%M2 - reduced flux 
+[gly_rxns2, rxnPos] = findRxnsFromSubSystem(ATP_model2, 'Glycolysis/gluconeogenesis')
+gly_flux2 = []
+for i = 1:length(gly_rxns2)
+opt_model2 = optimizeCbModel(ATP_model2);
+flux2 = opt_model2.x(findRxnIDs(ATP_model2,gly_rxns2(i)))
+res_out2=[gly_rxns2(i), flux2]
+gly_flux2=[gly_rxns2; res_out2]
+end
+
+
+%% Section 3: Optimizing for X
+
+    %% 3.1 Optimizing for Lactate Sink 
+
+%lactate production when optimizing for lactate sink
+lac_model1 = addSinkReactions(model1, {'lac_L[c]'})
+lac_model1 = changeObjective(lac_model1, 'sink_lac_L[c]');
+lac_model1_sol = optimizeCbModel(lac_model1)
+lac_model_sol.f
+
+%We expect lactate production to occur AND to be dependent on glucose 
+
+lac_glc_out1=[];
+glc_flux = [-10.5 -2.5 0]
+for i = 1:length(glc_flux)
+glc_lac_model1 = changeRxnBounds(lac_model1, 'EX_glc_D[e]', glc_flux(i), 'l');
+glc_lac_model1_sol = optimizeCbModel(glc_lac_model1);
+glc_lac_flux1 = glc_lac_model1_sol.x(findRxnIDs(glc_lac_model1,'sink_lac_L[c]'));
+res_out1=[glc_flux(i), glc_lac_model1_sol.f]
+lac_glc_out1=[lac_glc_out1; res_out1]
+end
+
+%We expect lactate production to occur AND to be dependent on glutamine
+
+lac_gln_out1=[];
+gln_flux = [-10.5 -2.5 0]
+for i = 1:length(gln_flux)
+gln_lac_model1 = changeRxnBounds(lac_model1, 'EX_gln_L[e]', gln_flux(i), 'l');
+gln_lac_model1_sol = optimizeCbModel(gln_lac_model1);
+gln_lac_flux1 = gln_lac_model1_sol.x(findRxnIDs(gln_lac_model1,'sink_lac_L[c]'));
+res_out1=[gln_flux(i), gln_lac_model1_sol.f]
+lac_gln_out1=[lac_gln_out1; res_out1]
+end
+
+
+%% Section 4: Biological Questions
+
+%% 4.1 Macrophage Switching 
+
+%% 4.2 Influence on Microbiome
+
+%% 4.2.1 Unconstrained butyrate
+
+%% 4.2.2 Unconstrained SCFAs 
